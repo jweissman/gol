@@ -9,7 +9,7 @@ describe World do
     expect(world.inhabitant_locations).to eq([Inhabitant.first.location])
   end
   
-  describe "#birth_inhabitant_at" do
+  xdescribe "#birth_inhabitant_at" do
     it 'should create a new inhabitant' do
       expect{ world.birth_inhabitant_at(coord(4,5)) }.to change{ world.inhabitants.count }.by(1)
     end
