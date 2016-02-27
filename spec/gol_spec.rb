@@ -2,46 +2,61 @@ require 'spec_helper'
 require 'pry'
 require 'gol'
 
-xdescribe World do
+describe World do
   let(:world) { World.create }
-  it 'should build a 2-d field' do
+  xit 'should build a 2-d field' do
     expect(world.inhabitants.all).to eq([Inhabitant.first])
     expect(world.inhabitant_locations).to eq([Inhabitant.first.location])
+  end
+  
+  describe "#birth_inhabitant_at" do
+    it 'should create a new inhabitant' do
+      expect{ world.birth_inhabitant_at(coord(4,5)) }.to change{ world.inhabitants.count }.by(1)
+    end
+  end
+
+  xdescribe "#kill_inhabitant_at" do
+    it 'should destroy an inhabitant' do
+      world.birth_inhabitant_at(coord(4,5))
+      expect{ world.kill_inhabitant_at(coord(4,5)) }.to change{ world.inhabitants.count }.by(-1)
+    end
   end
 end
 
 describe Inhabitant do
   before(:each) { PassiveRecord.drop_all }
   let(:world) { World.create }
-  let(:location) { [0,0] }
-  subject(:inhabitant) { world.create_inhabitant location: location }
+  let(:pos) { coord(0,0) }
+  subject(:inhabitant) { world.create_inhabitant(location: pos) }
 
-  it 'should have a location' do
-    expect(inhabitant.location).to eq(location)
+  describe 'instance attributes' do
+    it 'should have a location' do
+      expect(inhabitant.location).to eq(pos)
+    end
   end
 
-  it 'should compute distance' do
-    expect(inhabitant.distance_to([3,4])).to eq(5)
+  describe 'class methods' do
+    it 'should have an .at scope' do
+      expect(inhabitant).to eq(Inhabitant.at(coord(0,0)).first)
+    end
   end
 
-  it 'should track cohort' do
-    a = Inhabitant.create(location: [0,0], world: world)
-    b = Inhabitant.create(location: [0,1], world: world)
+  context 'counting neighbors' do
+    let!(:a) { Inhabitant.create(location: coord(0,0), world: world) }
+    let!(:b) { Inhabitant.create(location: coord(0,1), world: world) }
+    let!(:c) { Inhabitant.create(location: coord(0,2), world: world) }
+    let!(:d) { Inhabitant.create(location: coord(3,3), world: world) }
 
-    expect(a.cohort).to eq([b])
-    expect(b.cohort).to eq([a])
-  end
+    it 'should count neighbors' do
+      expect(Inhabitant.neighbors_of(a.location)).to eq([b])
+      expect(Inhabitant.neighbors_of(b.location)).to eq([a,c])
+      expect(Inhabitant.neighbors_of(c.location)).to eq([b])
+      expect(Inhabitant.neighbors_of(d.location)).to eq([])
+    end
 
-  it 'should count neighbors' do
-    a = Inhabitant.create(location: [0,0], world: world)
-    b = Inhabitant.create(location: [0,1], world: world)
-    c = Inhabitant.create(location: [0,2], world: world)
-    d = Inhabitant.create(location: [3,3], world: world)
-
-    expect(a.neighbors).to eq([b])
-    expect(b.neighbors).to eq([a,c])
-    expect(c.neighbors).to eq([b])
-    expect(d.neighbors).to eq([])
+    it 'should handle edge cases' do
+      expect(Inhabitant.neighbors_of(coord(1,1))).to eq([a,b,c])
+    end
   end
 end
 
@@ -63,18 +78,49 @@ describe CreateWorldCommand do
 end
 
 describe IterateCommand do
+  before(:each) { PassiveRecord.drop_all }
   let(:iteration_event) do
-    IterationEvent.create(world_id: 'world_id', locations: [])
+    IterationEvent.create(
+      world_id: 'world_id', 
+      locations: [
+        coord(2,2),
+        coord(1,2),
+        coord(3,2)
+      ]
+    )
   end
 
-  before do
+  let!(:world) do
     World.create id: 'world_id', dimensions: [10,10]
   end
 
-  subject(:command) { IterateCommand.create(world_id: 'world_id') }
-  it { is_expected.to trigger_event(iteration_event) }
+  context 'iteration' do
+    subject(:command) { IterateCommand.create(world_id: 'world_id') }
+    before do
+      world.create_inhabitant location: coord(2,1)
+      world.create_inhabitant location: coord(2,2)
+      world.create_inhabitant location: coord(2,3)
+    end
 
-  it 'should trigger iteration' do
-    expect(command).to trigger_events(iteration_event)
+    it { is_expected.to trigger_event(iteration_event) }
+  end
+
+  context 'gol rules' do
+    let(:inhabitant_died) do
+      InhabitantDestroyedEvent.create(location: pos)
+    end
+
+    let(:pos) do
+      coord(1,1)
+    end
+
+    let(:inhabitant) do
+      Inhabitant.create(location: pos)
+    end
+
+    xit 'should trigger deaths' do
+      Inhabitant.create(location: pos)
+      expect(command).to trigger_event(inhabitant_died)
+    end
   end
 end
