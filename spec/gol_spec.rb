@@ -2,13 +2,13 @@ require 'spec_helper'
 require 'pry'
 require 'gol'
 
-describe World do
+xdescribe World do
   let(:world) { World.create }
   xit 'should build a 2-d field' do
     expect(world.inhabitants.all).to eq([Inhabitant.first])
     expect(world.inhabitant_locations).to eq([Inhabitant.first.location])
   end
-  
+
   xdescribe "#birth_inhabitant_at" do
     it 'should create a new inhabitant' do
       expect{ world.birth_inhabitant_at(coord(4,5)) }.to change{ world.inhabitants.count }.by(1)
@@ -25,8 +25,9 @@ end
 
 describe Inhabitant do
   before(:each) { PassiveRecord.drop_all }
-  let(:world) { World.create }
+  let(:world) { World.create(dimensions: dimensions) }
   let(:pos) { coord(0,0) }
+  let(:dimensions) { [10,10] }
   subject(:inhabitant) { world.create_inhabitant(location: pos) }
 
   describe 'instance attributes' do
@@ -84,8 +85,8 @@ describe IterateCommand do
       world_id: 'world_id', 
       locations: [
         coord(2,2),
+        coord(3,2),
         coord(1,2),
-        coord(3,2)
       ]
     )
   end
