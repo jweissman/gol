@@ -1,7 +1,7 @@
 require 'metacosm'
 require 'parallel'
 require 'gosu'
-# require 'pry'
+require 'pry'
 
 require 'gol/version'
 require 'gol/location'
@@ -9,86 +9,12 @@ require 'gol/dimensions'
 require 'gol/distance'
 
 require 'gol/creature'
+require 'gol/world'
 
 # TODO move to metacosm
 Thread.abort_on_exception=true
 
 module Gol
-  class Cell < Struct.new(:location, :neighbor_count, :alive)
-  end
-
-  class World < Metacosm::Model
-    has_many :creatures
-    attr_accessor :dimensions
-
-    def generate_population!(n=80)
-      puts "---> generate pop! (n=#{n})"
-      n.times { print ' '; generate_creature }
-      emit(WorldPopulatedEvent.create(world_id: self.id))
-      self
-    end
-
-    def generate_creature
-      # existing_locations = inhabitant_locations
-      unique_position = false
-      until unique_position
-        print '.'
-        pos = dimensions.sample
-        unique_position = !(Creature.at(pos).any?) #existing_locations.include?(pos))
-      end
-      print '!'
-      create_creature(location: pos)
-    end
-
-    def inhabitant_locations
-      creatures.map(&:location)
-    end
-
-    def restrict_to_dimensions(locs)
-      locs.select { |loc| dimensions.contains?(loc) }
-    end
-
-    def analyze
-      locations          = (inhabitant_locations)
-      relevant_locations = restrict_to_dimensions((locations + locations.flat_map(&:neighbors)).uniq)
-      p [ :analyze ]
-      t0 = Time.now
-      relevant_locations.each do |xy|
-        neighbor_count = count_neighbors(xy, locations)
-        alive          = locations.include?(xy)
-        if alive && (neighbor_count < 2 || 3 < neighbor_count)
-          doomed = creatures.where.at(xy).first
-          doomed.destroy
-        elsif (!alive && neighbor_count == 3)
-          create_creature(location: xy)
-        end
-      end
-      p [ :analyze_complete, elapsed: (Time.now-t0) ]
-    end
-
-    def count_neighbors(xy, locations)
-      xy.neighbors.count do |neighbor_loc|
-        locations.include?(neighbor_loc)
-      end
-    end
-
-    def iterate!
-      p [ :iterate ]
-      analyze
-
-      p [ :rules_applied ]
-      emit(
-        IterationEvent.create(
-          world_id: self.id,
-          locations: inhabitant_locations
-        )
-      )
-
-      p [ :iterate_complete ]
-      self
-    end
-  end
-
   class CreateWorldCommand < Metacosm::Command
     attr_accessor :world_id, :dimensions, :generate
   end
@@ -132,6 +58,36 @@ module Gol
     end
   end
 
+  class CreatureCreatedEvent < Metacosm::Event
+    attr_accessor :world_id, :creature_id, :color, :location
+  end
+
+  class CreatureCreatedEventListener < Metacosm::EventListener
+    def receive(world_id:, creature_id:, color:, location:)
+      world_view = WorldView.find_by(world_id: world_id)
+      world_view.create_creature_view(
+        creature_id: creature_id,
+        world_id: world_id,
+        color: color,
+        location: location
+      )
+    end
+  end
+
+  class CreatureDestroyedEvent < Metacosm::Event
+    attr_accessor :world_id, :location #:creature_id
+  end
+
+  class CreatureDestroyedEventListener < Metacosm::EventListener
+    def receive(world_id:, location:)
+      world_view = WorldView.find_by(world_id: world_id)
+      world_view.creature_views.where(location: location).first.destroy
+      # CreatureView.
+      #   find_by(world_id: world_id, creature_id: creature_id).
+      #   destroy
+    end
+  end
+
   class IterateCommand < Metacosm::Command
     attr_accessor :world_id
   end
@@ -145,22 +101,27 @@ module Gol
   end
 
   class IterationEvent < Metacosm::Event
-    attr_accessor :locations, :world_id
+    attr_accessor :locations_and_colors, :world_id
   end
 
   class IterationEventListener < Metacosm::EventListener
-    def receive(locations:, world_id:)
-      # p [ :iteration_event_listener, locations: locations ]
-      world_view = WorldView.where(world_id: world_id).first
-      world_view.update(locations: locations, history: @history)
+    def receive(locations_and_colors:, world_id:)
+      # world_view = WorldView.where(world_id: world_id).first
 
-      if repeated?(locations)
-        p [ :repopulate ]
+      # create a new field view, but we need to copy locations
+      # field_view = world_view.field_views.create
+      # locations_and_colors.each do |xy, color|
+      #   field_view.create_creature_view(location: xy, color: color)
+      # end
+
+      # world
+      # world_view.update(locations: locations) #, history: @history)
+
+      if repeated?(locations_and_colors)
         @history = []
         fire( PopulateWorldCommand.create(world_id: world_id))
       else
-        p [ :reiterate ]
-        fire( (IterateCommand.create(world_id: world_id)))
+        fire( IterateCommand.create(world_id: world_id))
       end
     end
 
@@ -169,7 +130,6 @@ module Gol
       location_set = locations.to_set
       @history ||= []
       @history.push(location_set)
-      p [ :repeated?, history_size: @history.size ]
 
       repeated = (2..CYCLE_TO_CHECK).any? do |i|
         @history.size > i && location_set == @history[-i]
@@ -183,47 +143,95 @@ module Gol
     end
   end
 
-  class WorldView < Metacosm::View
-    attr_accessor :world_id, :dimensions, :locations, :history
+  class CreatureView < Metacosm::View
+    belongs_to :world_view
+    attr_accessor :world_id, :creature_id, :color, :location
 
-    def render(window)
-      return unless locations && locations.any?
+    def render(window, alpha=140)
+      return unless location
+      color.alpha = alpha
 
-      w,h = *dimensions
-      cell_width, cell_height = window.width / w, window.height / h
+      w,h = *world_view.dimensions
+      cell_width = window.width / w
+      cell_height = window.height / h
+      scaled_location = location.scale(cell_width, cell_height)
 
-      history&.each_with_index do |historical_view, i|
-        historical_view.
-          map { |loc| loc.scale(cell_width, cell_height) }.
-          each do |location|
-
-            render_cell(location, cell_width, cell_height, window, layer_color(i, history.size))
-          end
-      end
-
-      scaled_locations = locations.map { |location| location.scale(cell_width, cell_height) }
-      scaled_locations.each do |location|
-        render_cell(location, cell_width, cell_height, window, base_color)
-      end
-    end
-
-    def render_cell(location, cell_width, cell_height, window, color)
-      x,y = *location
+      x,y = *scaled_location
       window.draw_quad(x, y, color,
                        x, y+cell_height, color,
                        x+cell_width, y, color,
-                       x+cell_width, y+cell_height, color) # 0xc0c0c0c0)
+                       x+cell_width, y+cell_height, color)
+    end
+  end
+
+  # class FieldView < Metacosm::View
+  #   has_many :creature_views
+  #   belongs_to :world_view
+
+  #   def dimensions
+  #     world_view.dimensions
+  #   end
+
+  #   def render(window, alpha)
+  #     creature_views.each do |creature_view|
+  #       creature_view.render(window, alpha)
+  #     end
+  #   end
+  # end
+
+  class WorldView < Metacosm::View
+    attr_accessor :world_id, :dimensions #, :locations, :history
+    # has_one :field_view
+    # has_many :field_views
+    has_many :creature_views #, :through => :most_recentfield_view
+
+    # def top_field
+    #   field_views.any? ? field_views.last : field_views.create
+    # end
+
+    # def creature_views
+    #   top_field.creature_views
+    # end
+
+    def render(window)
+      # field_views.each_with_index do |field_view, i|
+      #   depth = field_views.size - i
+      #   field_view.render(window, 240*(depth/field_views.size))
+      # end
+
+      # render_trails(window)
+      creature_views.each do |creature_view|
+        creature_view.render(window)
+      end
     end
 
-    protected
-    def base_color
-      @base_color ||= Gosu::Color.new( 255, 255, 255, 255 )
-    end
+    # def render_trails(window)
+    #   w,h = *dimensions
+    #   cell_width, cell_height = window.width / w, window.height / h
 
-    def layer_color(layer_index,layer_count)
-      opacity = (160 * (layer_index+1)/((layer_count+1).to_f)).to_i
-      Gosu::Color.new(opacity, 192, 192, 192)
-    end
+    #   history&.each_with_index do |historical_view, i|
+    #     historical_view.
+    #       map { |loc| loc.scale(cell_width, cell_height) }.
+    #       each do |location|
+
+    #         render_cell(location, cell_width, cell_height, window, layer_color(i, history.size))
+    #       end
+    #   end
+    # end
+
+    # def render_cell(location, cell_width, cell_height, window, color)
+    #   x,y = *location
+    #   window.draw_quad(x, y, color,
+    #                    x, y+cell_height, color,
+    #                    x+cell_width, y, color,
+    #                    x+cell_width, y+cell_height, color)
+    # end
+
+    # protected
+    # def layer_color(layer_index,layer_count)
+    #   opacity = (120 * (layer_index+1)/((layer_count+1).to_f)).to_i
+    #   Gosu::Color.new(opacity, 160, 160, 240)
+    # end
   end
 
   class ApplicationWindow < Gosu::Window
@@ -242,7 +250,7 @@ module Gol
       self.sim.fire(
         CreateWorldCommand.create(
           world_id: self.world_id,
-          dimensions: dim(64,48) #[ 32, 24 ]
+          dimensions: dim(self.width/10,self.height/10)
         )
       )
 

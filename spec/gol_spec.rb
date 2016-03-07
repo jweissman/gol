@@ -2,12 +2,12 @@ require 'spec_helper'
 require 'pry'
 require 'gol'
 
-
 describe World do
+  include Gol::LocationHelpers
   include Gol::DimensionHelpers
   let(:world) { World.create(dimensions: dimensions) }
   let(:dimensions) { dim(10,10) }
-  before { world.generate_creature }
+  before { world.create_creature(location: coord(2,3)) }
 
   it 'should build a 2-d field' do
     expect(world.creatures.all).to eq([Creature.first])
@@ -43,14 +43,14 @@ describe Creature do
     let!(:d) { Creature.create(location: coord(3,3), world: world) }
 
     it 'should count neighbors' do
-      expect(Creature.neighbors_of(a.location)).to eq([b])
-      expect(Creature.neighbors_of(b.location)).to eq([a,c])
-      expect(Creature.neighbors_of(c.location)).to eq([b])
-      expect(Creature.neighbors_of(d.location)).to eq([])
+      expect(Creature.neighbors_of(a.location).all).to eq([b])
+      expect(Creature.neighbors_of(b.location).all).to eq([a,c])
+      expect(Creature.neighbors_of(c.location).all).to eq([b])
+      expect(Creature.neighbors_of(d.location).all).to eq([])
     end
 
     it 'should handle edge cases' do
-      expect(Creature.neighbors_of(coord(1,1))).to eq([a,b,c])
+      expect(Creature.neighbors_of(coord(1,1)).all).to eq([a,b,c])
     end
   end
 end
@@ -82,11 +82,11 @@ describe IterateCommand do
   let(:iteration_event) do
     IterationEvent.create(
       world_id: 'world_id',
-      locations: [
-        coord(2,2),
-        coord(3,2),
-        coord(1,2),
-      ]
+      locations_and_colors: {
+        coord(2,2) => :red,
+        coord(3,2) => :red,
+        coord(1,2) => :red,
+      }
     )
   end
 
@@ -97,30 +97,11 @@ describe IterateCommand do
   context 'iteration' do
     subject(:command) { IterateCommand.create(world_id: 'world_id') }
     before do
-      world.create_creature location: coord(2,1)
-      world.create_creature location: coord(2,2)
-      world.create_creature location: coord(2,3)
+      world.create_creature location: coord(2,1), color: :red
+      world.create_creature location: coord(2,2), color: :red
+      world.create_creature location: coord(2,3), color: :blue
     end
 
     it { is_expected.to trigger_event(iteration_event) }
-  end
-
-  context 'gol rules' do
-    let(:creature_died) do
-      CreatureDestroyedEvent.create(location: pos)
-    end
-
-    let(:pos) do
-      coord(1,1)
-    end
-
-    let(:creature) do
-      Creature.create(location: pos)
-    end
-
-    xit 'should trigger deaths' do
-      Creature.create(location: pos)
-      expect(command).to trigger_event(creature_died)
-    end
   end
 end
