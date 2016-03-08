@@ -24,8 +24,13 @@ module Gol
       Gosu::Color.new(self.alpha, self.red, self.green, self.blue)
     end
 
-    def self.blue;  @blue  ||= new(255,160,160,240) end
-    def self.green; @green ||= new(255,160,240,160) end
-    def self.yellow; @yellow ||= new(255,240,240,160) end
+
+    def self.red;    @red    ||= new(255,high,low,low) end
+    def self.blue;   @blue   ||= new(255,low,low,high) end
+    def self.green;  @green  ||= new(255,low,high,low) end
+    def self.yellow; @yellow ||= new(255,high,high,low) end
+
+    def self.high; 240 end
+    def self.low;  160 end
   end
 end

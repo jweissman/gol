@@ -74,11 +74,5 @@ module Gol
         locations.include?(neighbor_loc)
       end
     end
-
-    def majority_neighbor_color(xy)
-      Creature.
-        neighbors_of(xy).
-        average(:color)
-    end
   end
 end

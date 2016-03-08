@@ -9,7 +9,7 @@ module Gol
     end
 
     def palette
-      [ Gol::Color.blue, Gol::Color.green, Gol::Color.yellow ]
+      [ Gol::Color.blue, Gol::Color.red ]
     end
 
     def self.survives?(surrounding_count)
@@ -26,7 +26,11 @@ module Gol
     end
 
     def self.next_color(xy)
-      neighbors_of(xy).average(:color)
+      if rand < 0.8
+        neighbors_of(xy).mode(:color)
+      else
+        neighbors_of(xy).average(:color)
+      end
     end
 
     ## scopes
