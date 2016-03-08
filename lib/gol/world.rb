@@ -3,7 +3,7 @@ module Gol
     has_many :creatures
     attr_accessor :dimensions
 
-    def generate_population!(n=(dimensions.area * 0.05).to_i)
+    def generate_population!(n=(dimensions.area * 0.35).to_i)
       puts "---> generate pop! (n=#{n})"
       locs = restrict_to_dimensions(dimensions.all_locations - inhabitant_locations).sample(n)
       n.times { create_creature(location: locs.shift) }
@@ -48,13 +48,13 @@ module Gol
       actions = []
 
       relevant_locations.each do |xy|
-        neighbor_count = count_neighbors(xy, locations)
-        alive          = Creature.at(xy).any?
+        neighbor_count  = count_neighbors(xy, locations)
+        alive           = Creature.at(xy).any?
         alive_next_step = Creature.next_state(alive, neighbor_count)
         if    alive && !alive_next_step
           actions.push({ cmd: 'destroy', xy: xy })
         elsif !alive && alive_next_step
-          actions.push({ cmd: 'create', xy: xy, color: majority_neighbor_color(xy) })
+          actions.push({ cmd: 'create', xy: xy, color: Creature.next_color(xy) })
         end
       end
 
@@ -78,7 +78,7 @@ module Gol
     def majority_neighbor_color(xy)
       Creature.
         neighbors_of(xy).
-        mode(:color)
+        average(:color)
     end
   end
 end

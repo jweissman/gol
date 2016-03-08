@@ -79,13 +79,17 @@ describe IterateCommand do
   include Gol::DimensionHelpers
 
   before(:each) { PassiveRecord.drop_all }
+  let(:red) { Gol::Color.new(255,255,0,0) }
+  let(:blue) { Gol::Color.new(255,0,0,255) }
+  let(:purple) { Gol::Color.new(255,42,0,42) }
+
   let(:iteration_event) do
     IterationEvent.create(
       world_id: 'world_id',
       locations_and_colors: {
-        coord(2,2) => :red,
-        coord(3,2) => :red,
-        coord(1,2) => :red,
+        coord(2,2) => red,
+        coord(3,2) => red,
+        coord(1,2) => red,
       }
     )
   end
@@ -97,9 +101,9 @@ describe IterateCommand do
   context 'iteration' do
     subject(:command) { IterateCommand.create(world_id: 'world_id') }
     before do
-      world.create_creature location: coord(2,1), color: :red
-      world.create_creature location: coord(2,2), color: :red
-      world.create_creature location: coord(2,3), color: :blue
+      world.create_creature location: coord(2,1), color: red
+      world.create_creature location: coord(2,2), color: red
+      world.create_creature location: coord(2,3), color: red
     end
 
     it { is_expected.to trigger_event(iteration_event) }

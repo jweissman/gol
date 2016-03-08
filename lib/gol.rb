@@ -11,6 +11,12 @@ require 'gol/distance'
 require 'gol/creature'
 require 'gol/world'
 
+require 'gol/creature_view'
+require 'gol/field_view'
+require 'gol/world_view'
+
+require 'gol/window'
+
 # TODO move to metacosm
 Thread.abort_on_exception=true
 
@@ -110,7 +116,7 @@ module Gol
       end
     end
 
-    CYCLE_TO_CHECK = 7
+    CYCLE_TO_CHECK = 15
     def repeated?(locations)
       location_set = locations.to_set
       @history ||= []
@@ -126,75 +132,5 @@ module Gol
 
       repeated
     end
-  end
-
-  class CreatureView < Metacosm::View
-    belongs_to :world_view
-    attr_accessor :world_id, :creature_id, :color, :location
-
-    def render(window, alpha=140)
-      return unless location
-      color.alpha = alpha
-
-      w,h = *world_view.dimensions
-      cell_width = window.width / w
-      cell_height = window.height / h
-      scaled_location = location.scale(cell_width, cell_height)
-
-      x,y = *scaled_location
-      window.draw_quad(x, y, color,
-                       x, y+cell_height, color,
-                       x+cell_width, y, color,
-                       x+cell_width, y+cell_height, color)
-    end
-  end
-
-  class WorldView < Metacosm::View
-    attr_accessor :world_id, :dimensions
-    has_many :creature_views
-
-    def render(window)
-      creature_views.each do |creature_view|
-        creature_view.render(window)
-      end
-    end
-  end
-
-  class ApplicationWindow < Gosu::Window
-    include DimensionHelpers
-
-    attr_accessor :world_id, :width, :height, :history, :sim
-    def initialize
-      self.width = 640
-      self.height = 480
-
-      super(self.width, self.height, true)
-      self.caption = 'Hello World!'
-      self.world_id = 'gol-instance'
-      self.sim = Metacosm::Simulation.current
-
-      self.sim.fire(
-        CreateWorldCommand.create(
-          world_id: self.world_id,
-          dimensions: dim(self.width/10,self.height/10)
-        )
-      )
-
-      self.sim.conduct!
-    end
-
-    def draw
-      view.render(self) if view
-    end
-
-    protected
-    def view
-      WorldView.find_by(world_id: self.world_id)
-    end
-  end
-
-  if __FILE__ == $0
-    window = ApplicationWindow.new
-    window.show
   end
 end
