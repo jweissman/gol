@@ -8,7 +8,8 @@
 
 ## Description
 
-TODO: Description
+A game-of-life implementation mostly to help demonstrate the [metacosm](https://github.com/deepcerulean/metacosm) framework and
+to prototype integration with gosu 
 
 ## Features
 
